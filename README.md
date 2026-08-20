@@ -110,7 +110,7 @@ Windows NPS (RADIUS), и веб-панель для админов — созд�
 
 **Разовая настройка:**
 ```
-git clone <адрес_вашего_репозитория> ~/ovpn-radius-panel
+git clone https://github.com/everhallow/ovpn-web-admin ~/ovpn-radius-panel
 cd ~/ovpn-radius-panel
 ```
 Если панель ещё не установлена — `sudo ./install.sh` отсюда же, как обычно.
