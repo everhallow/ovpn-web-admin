@@ -1,0 +1,17 @@
+# Реальные секреты — коммитить нельзя, только install.conf.example
+install.conf
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Данные панели (на сервере живут в /opt/ovpn-panel/instance, вне этого
+# репозитория, но на всякий случай — если кто-то по ошибке скопирует)
+instance/
+*.db
+
+# Разное
+.DS_Store
+*.bak.*

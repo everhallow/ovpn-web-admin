@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — OpenVPN Panel{% endblock %}
+{% block content %}
+<h3 class="mb-4">Дашборд</h3>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Всего пользователей</div>
+      <div class="fs-2">{{ total }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Активных сертификатов</div>
+      <div class="fs-2">{{ valid_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Сейчас подключено</div>
+      <div class="fs-2">{{ connected_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted">Со статическим IP</div>
+      <div class="fs-2">{{ static_count }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Нагрузка на интерфейс {{ net_iface }}</h5>
+    <div class="row g-4 mt-1">
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="text-muted">Входящий (down)</span>
+          <span id="netDownLabel" class="fw-semibold">—</span>
+        </div>
+        <div class="net-bar-track"><div class="net-bar-fill down" id="netDownBar" style="width: 0%;"></div></div>
+      </div>
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="text-muted">Исходящий (up)</span>
+          <span id="netUpLabel" class="fw-semibold">—</span>
+        </div>
+        <div class="net-bar-track"><div class="net-bar-fill up" id="netUpBar" style="width: 0%;"></div></div>
+      </div>
+    </div>
+    <div class="section-note mt-2">Обновляется каждые 3 секунды.</div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-7">
+    <h5 class="mb-3">Активные подключения</h5>
+    <table class="table table-sm">
+      <thead><tr><th>Пользователь (CN)</th><th>Публичный адрес</th><th>Серый (VPN) адрес</th></tr></thead>
+      <tbody>
+        {% for cn, info in connected.items() %}
+        <tr>
+          <td>{{ cn }}</td>
+          <td>{{ info.real_addr }}</td>
+          <td>{{ info.vpn_addr }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">Никто не подключён</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-5">
+    <h5 class="mb-3">Последние действия</h5>
+    <div class="card"><div class="card-body">
+      {% for a in recent_actions %}
+      <div class="audit-item">
+        <span class="text-muted">{{ a.ts.split('T')[1] if 'T' in a.ts else a.ts }}</span>
+        — <strong>{{ a.actor }}</strong>: {{ a.action }}{% if a.details %} ({{ a.details }}){% endif %}
+      </div>
+      {% else %}
+      <div class="text-muted">Пока пусто</div>
+      {% endfor %}
+      <a href="{{ url_for('admins') }}" class="d-block mt-2 small">Полный журнал →</a>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function formatBps(bytesPerSec) {
+    var bits = bytesPerSec * 8;
+    if (bits < 1000) return bits.toFixed(0) + ' bit/s';
+    if (bits < 1000 * 1000) return (bits / 1000).toFixed(1) + ' Kbit/s';
+    if (bits < 1000 * 1000 * 1000) return (bits / 1000 / 1000).toFixed(1) + ' Mbit/s';
+    return (bits / 1000 / 1000 / 1000).toFixed(2) + ' Gbit/s';
+  }
+
+  // произвольный масштаб полосы — 100 Mbit/s = полная ширина, чисто для наглядности
+  var BAR_SCALE_BITS = 100 * 1000 * 1000;
+
+  function pollNetStats() {
+    fetch("{{ url_for('api_net_stats') }}")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) return;
+        document.getElementById('netDownLabel').textContent = formatBps(data.rx_bps);
+        document.getElementById('netUpLabel').textContent = formatBps(data.tx_bps);
+        var downPct = Math.min(100, (data.rx_bps * 8 / BAR_SCALE_BITS) * 100);
+        var upPct = Math.min(100, (data.tx_bps * 8 / BAR_SCALE_BITS) * 100);
+        document.getElementById('netDownBar').style.width = downPct + '%';
+        document.getElementById('netUpBar').style.width = upPct + '%';
+      })
+      .catch(function() {});
+  }
+  pollNetStats();
+  setInterval(pollNetStats, 3000);
+</script>
+{% endblock %}

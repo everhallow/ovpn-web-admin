@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — OpenVPN Panel{% endblock %}
+{% block content %}
+<h3 class="mb-4">Пользователи</h3>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Новый пользователь</h5>
+    <form method="post" action="{{ url_for('users_new') }}" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Имя пользователя (как в AD)</label>
+        <input type="text" name="cn" class="form-control" placeholder="ivan.petrov" required pattern="[A-Za-z0-9._-]+">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Статический IP (необязательно)</label>
+        <input type="text" name="static_ip" class="form-control" placeholder="например 10.66.0.230">
+      </div>
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-primary">Создать и выпустить сертификат</button>
+      </div>
+    </form>
+    <div class="section-note mt-2">
+      Имя используется как CN сертификата — логин/пароль пользователь вводит свои, доменные,
+      их проверяет NPS.
+      Статический IP нужно указывать из зарезервированного диапазона
+      (вне динамического пула) — если введёте адрес из динамического диапазона или уже занятый,
+      панель откажет с пояснением.
+    </div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Список пользователей</h5>
+  <input type="text" id="usersSearch" class="form-control" style="max-width: 260px;" placeholder="Поиск по CN...">
+</div>
+
+<table class="table align-middle" id="usersTable">
+  <thead>
+    <tr>
+      <th>CN</th>
+      <th>Сертификат</th>
+      <th>Подключение</th>
+      <th>Публичный адрес</th>
+      <th>Серый (VPN) адрес</th>
+      <th>Закреплённый IP</th>
+      <th>Истекает</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in clients %}
+    <tr data-cn="{{ c.cn }}">
+      <td>{{ c.cn }}</td>
+      <td>
+        {% if c.status == 'valid' %}
+          <span class="badge bg-success">действителен</span>
+        {% else %}
+          <span class="badge bg-danger">отозван</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if c.online %}
+          <span class="badge badge-online">online</span>
+        {% else %}
+          <span class="badge badge-offline">offline</span>
+        {% endif %}
+      </td>
+      <td>{{ c.public_ip if c.public_ip else '—' }}</td>
+      <td>{{ c.vpn_ip_now if c.vpn_ip_now else '—' }}</td>
+      <td>
+        {% if static_ip %}
+          <span class="badge badge-static">{{ c.static_ip }}</span>
+          {% if c.status == 'valid' %}
+          <form method="post" action="{{ url_for('users_remove_static', cn=c.cn) }}" class="d-inline"
+                onsubmit="return confirm('Снять статический адрес у {{ c.cn }}?');">
+            <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Снять">×</button>
+          </form>
+          {% endif %}
+        {% elif c.status == 'valid' %}
+          <form method="post" action="{{ url_for('users_set_static', cn=c.cn) }}" class="d-flex gap-1">
+            <input type="text" name="static_ip" class="form-control form-control-sm" placeholder="назначить IP" style="width: 130px;">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Закрепить</button>
+          </form>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+      <td>{{ c.expires }}</td>
+      <td class="text-end">
+        {% if c.status == 'valid' %}
+        <a class="btn btn-sm btn-outline-primary btn-download-ovpn" href="{{ url_for('users_download', cn=c.cn) }}">Скачать .ovpn</a>
+        <form method="post" action="{{ url_for('users_revoke', cn=c.cn) }}" class="d-inline"
+              onsubmit="return confirm('Отозвать доступ пользователю {{ c.cn }}? Действие необратимо.');">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Отозвать</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="text-muted">Пользователей пока нет</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('usersSearch').addEventListener('input', function(e) {
+    var q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#usersTable tbody tr').forEach(function(row) {
+      var cn = (row.getAttribute('data-cn') || '').toLowerCase();
+      row.style.display = !q || cn.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+
+  // Подсветка строки пользователя, чей .ovpn выгружается — при наведении
+  // на любую часть строки она подсвечивается (чистый CSS, см. base.html),
+  // а при клике на "Скачать .ovpn" подсветка фиксируется на пару секунд,
+  // чтобы наглядно видеть, кого именно скачали.
+  document.querySelectorAll('.btn-download-ovpn').forEach(function(btn) {
+    var row = btn.closest('tr');
+    if (!row) return;
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.row-download-active').forEach(function(r) {
+        r.classList.remove('row-download-active');
+      });
+      row.classList.add('row-download-active');
+      setTimeout(function() { row.classList.remove('row-download-active'); }, 2500);
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Настройки — OpenVPN Panel{% endblock %}
+{% block content %}
+<h3 class="mb-4">Настройки</h3>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Внешний адрес для выдаваемых .ovpn</h5>
+    <p class="section-note">Меняется без перезапуска OpenVPN. Влияет только на новые скачиваемые файлы —
+      уже выданные .ovpn нужно перевыпустить (скачать заново), если поменяли адрес.</p>
+    <form method="post" action="{{ url_for('settings_remote') }}">
+      <div class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label">Remote host (IP/домен)</label>
+          <input type="text" name="remote_host" class="form-control" value="{{ remote_host }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Порт</label>
+          <input type="text" name="remote_port" class="form-control" value="{{ remote_port }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Протокол</label>
+          <select name="proto" class="form-select">
+            <option value="udp" {{ 'selected' if proto == 'udp' }}>udp</option>
+            <option value="tcp" {{ 'selected' if proto == 'tcp' }}>tcp</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">RADIUS (Windows NPS)</h5>
+    <p class="section-note">Режим аутентификации: <strong>PAP</strong> (через pam_radius_auth).
+      Сохранение перепишет /etc/pam_radius_auth.conf и перезапустит OpenVPN —
+      все текущие сессии будут разорваны.</p>
+    <form method="post" action="{{ url_for('settings_radius') }}"
+          onsubmit="return confirm('Сохранить настройки RADIUS? OpenVPN перезапустится, все клиенты отключатся.');">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label">Адрес NPS</label>
+          <input type="text" name="nps_host" class="form-control" value="{{ nps_host }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Порт</label>
+          <input type="text" name="nps_port" class="form-control" value="{{ nps_port }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Shared secret</label>
+          <input type="password" name="nps_secret" class="form-control" value="{{ nps_secret }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Таймаут, сек</label>
+          <input type="text" name="nps_timeout" class="form-control" value="{{ nps_timeout }}" required>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-warning w-100">Сохранить</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Доступ к панели</h5>
+    <p class="section-note">
+      Панель слушает порт {{ panel_port }} на сервере, но правило ufw пропускает запросы
+      только с адресов внутри указанных сетей — по умолчанию это все приватные диапазоны
+      RFC1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), то есть доступ есть из любой
+      "серой" внутренней сети. Привязки к VPN-туннелю нет. Можно указать несколько сетей
+      через пробел или перенос строки. Изменение не трогает OpenVPN и не разрывает
+      VPN-сессии, но если вы зайдёте не из разрешённой сети — следующий запрос к панели
+      может не пройти (тогда правило всегда можно поправить руками через ufw по SSH).
+    </p>
+    <form method="post" action="{{ url_for('settings_access') }}"
+          onsubmit="return confirm('Изменить сети, из которых разрешён доступ к панели? Убедитесь, что ваш текущий адрес входит в новый список.');">
+      <div class="row g-2">
+        <div class="col-md-8">
+          <label class="form-label">Разрешённые сети (CIDR, через пробел/строку)</label>
+          <textarea name="panel_allowed_cidr" class="form-control" rows="2" placeholder="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" required>{{ panel_allowed_cidr }}</textarea>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-warning w-100">Сохранить</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Сеть OpenVPN (порт / пул адресов / маршруты / DNS)</h5>
+    <p class="section-note">
+      Изменение перезапускает OpenVPN — все текущие подключения будут разорваны.
+      Динамический диапазон (dynamic pool) — это адреса, которые сервер раздаёт сам,
+      автоматически; статические адреса пользователей должны лежать <strong>вне</strong>
+      этого диапазона, иначе возможен конфликт адресов. При смене порта панель сама
+      поправит правило ufw на сервере (закроет старый порт, откроет новый) — но не
+      забудьте поправить проброс порта на вашем NAT-шлюзе/облачном firewall отдельно,
+      если он у вас есть, панель до него не дотягивается.
+    </p>
+    <form method="post" action="{{ url_for('settings_network') }}"
+          onsubmit="return confirm('Применить новые сетевые настройки? OpenVPN перезапустится, все клиенты отключатся.');">
+      <div class="row g-2">
+        <div class="col-md-2">
+          <label class="form-label">Порт OpenVPN</label>
+          <input type="text" name="vpn_port" class="form-control" value="{{ server_conf.vpn_port }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Протокол</label>
+          <select name="vpn_proto" class="form-select">
+            <option value="udp" {{ 'selected' if server_conf.vpn_proto == 'udp' }}>udp</option>
+            <option value="tcp" {{ 'selected' if server_conf.vpn_proto == 'tcp' }}>tcp</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Пул: сеть</label>
+          <input type="text" name="subnet" class="form-control" value="{{ server_conf.subnet }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Пул: маска</label>
+          <input type="text" name="mask" class="form-control" value="{{ server_conf.mask }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Динамический пул: с</label>
+          <input type="text" name="pool_start" class="form-control" value="{{ server_conf.pool_start }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Динамический пул: по</label>
+          <input type="text" name="pool_end" class="form-control" value="{{ server_conf.pool_end }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Split-route: сеть</label>
+          <input type="text" name="route_net" class="form-control" value="{{ server_conf.route_net }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Split-route: маска</label>
+          <input type="text" name="route_mask" class="form-control" value="{{ server_conf.route_mask }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">DNS 1</label>
+          <input type="text" name="dns1" class="form-control" value="{{ server_conf.dns[0] if server_conf.dns|length > 0 else '' }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">DNS 2</label>
+          <input type="text" name="dns2" class="form-control" value="{{ server_conf.dns[1] if server_conf.dns|length > 1 else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Domain (dhcp-option DOMAIN, необязательно)</label>
+          <input type="text" name="domain_name" class="form-control" value="{{ server_conf.domain }}" placeholder="corp.local">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Дополнительные split-tunnel маршруты (CIDR через пробел/строку, необязательно)</label>
+          <textarea name="extra_routes" class="form-control" rows="2" placeholder="192.168.50.0/24 172.20.0.0/16">{{ server_conf.extra_routes|join(' ') }}</textarea>
+          <div class="section-note mt-1">Основной маршрут (сеть/маска выше) не трогает — это отдельные, дополнительные подсети сверх него.</div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-warning mt-3">Применить и перезапустить OpenVPN</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

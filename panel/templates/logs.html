@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Логирование — OpenVPN Panel{% endblock %}
+{% block content %}
+<h3 class="mb-4">Логирование</h3>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="card-title mb-0">Подключения пользователей</h5>
+      <form method="get" class="d-flex gap-2">
+        <input type="text" name="cn" class="form-control form-control-sm" style="width: 200px;"
+               placeholder="Фильтр по CN..." value="{{ cn_filter }}">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Найти</button>
+        {% if cn_filter %}
+        <a href="{{ url_for('logs') }}" class="btn btn-sm btn-outline-secondary">Сбросить</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if not connections_log_exists %}
+    <p class="text-muted">
+      Лог подключений ещё не создан — появится после первого подключения
+      пользователя (или после наката client-connect/client-disconnect
+      скриптов на существующей установке, см. README).
+    </p>
+    {% endif %}
+
+    <div style="max-height: 480px; overflow-y: auto;">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Время</th><th>Событие</th><th>Пользователь</th>
+            <th>Публичный адрес</th><th>VPN-адрес</th><th>Длительность</th><th>Трафик</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in connections %}
+          <tr>
+            <td class="text-muted">{{ c.ts }}</td>
+            <td>
+              {% if c.event == 'connect' %}
+                <span class="badge badge-online">подключение</span>
+              {% else %}
+                <span class="badge badge-offline">отключение</span>
+              {% endif %}
+            </td>
+            <td>{{ c.cn }}</td>
+            <td>{{ c.real_addr }}</td>
+            <td>{{ c.vpn_addr }}</td>
+            <td>{{ c.duration if c.event == 'disconnect' else '—' }}</td>
+            <td>{{ c.traffic if c.traffic else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-muted">Записей пока нет</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="section-note mt-2">Показаны последние 300 записей.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Лог сервера OpenVPN (сырой)</h5>
+    {% if not server_log_exists %}
+    <p class="text-muted">Файл лога сервера не найден.</p>
+    {% else %}
+    <div class="log-box">{% for line in server_log_lines %}{{ line }}
+{% endfor %}</div>
+    <div class="section-note mt-2">Показаны последние 300 строк. Обновить — просто перезагрузите страницу.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}OpenVPN Panel{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card-bg: #ffffff;
+      --accent: #5b6ee1;
+      --accent-soft: #eef0fd;
+      --text: #2c2e3a;
+      --text-muted: #7a7f92;
+      --border-soft: #e9eaf2;
+    }
+    html[data-theme="dark"] {
+      --bg: #14151d;
+      --card-bg: #1c1e2a;
+      --accent: #8a97f0;
+      --accent-soft: rgba(138,151,240,0.16);
+      --text: #e7e8f0;
+      --text-muted: #9195a8;
+      --border-soft: #2b2d3c;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .navbar {
+      background: var(--card-bg) !important;
+      border-bottom: 1px solid var(--border-soft);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .navbar-brand { font-weight: 700; color: var(--accent) !important; }
+    .nav-link { color: var(--text) !important; font-weight: 500; border-radius: 8px; padding: 6px 14px !important; opacity: 0.85; }
+    .nav-link:hover { background: var(--accent-soft); color: var(--accent) !important; opacity: 1; }
+    .theme-toggle {
+      background: none; border: 1px solid var(--border-soft); border-radius: 8px;
+      padding: 6px 12px; color: var(--text); cursor: pointer; font-size: 0.9rem;
+    }
+    .theme-toggle:hover { background: var(--accent-soft); }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      box-shadow: 0 2px 10px rgba(30,30,60,0.04);
+      color: var(--text);
+    }
+    .card-body { padding: 1.5rem; }
+    .card-title { font-weight: 600; margin-bottom: 0.75rem; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); border-radius: 8px; }
+    .btn-primary:hover { filter: brightness(0.92); }
+    .btn-outline-primary { border-radius: 8px; color: var(--accent); border-color: var(--accent); }
+    .btn-outline-danger { border-radius: 8px; }
+    .btn-warning { border-radius: 8px; }
+    .btn-sm { border-radius: 6px; }
+    .form-control, .form-select {
+      border-radius: 8px; border-color: var(--border-soft);
+      background: var(--card-bg); color: var(--text);
+    }
+    .form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--card-bg); color: var(--text); }
+    .table { background: var(--card-bg); border-radius: 14px; overflow: hidden; color: var(--text); }
+    .table thead th { color: var(--text-muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid var(--border-soft); }
+    .table td, .table th { border-color: var(--border-soft); }
+    html[data-theme="dark"] .table { --bs-table-bg: var(--card-bg); --bs-table-color: var(--text); }
+    .badge { border-radius: 6px; font-weight: 500; padding: 5px 10px; }
+    .badge-online { background: #2ecc71; }
+    .badge-offline { background: #c9cbd6; color: #4a4d5c; }
+    .badge-static { background: var(--accent-soft); color: var(--accent); }
+    .alert { border-radius: 10px; border: none; }
+    .alert-success { background: #e7f8ee; color: #1e7d47; }
+    .alert-danger { background: #fdecec; color: #b0313a; }
+    html[data-theme="dark"] .alert-success { background: rgba(46,204,113,0.15); color: #4fd685; }
+    html[data-theme="dark"] .alert-danger { background: rgba(220,53,69,0.18); color: #ff8b93; }
+    .text-muted { color: var(--text-muted) !important; }
+    .fs-2 { font-weight: 700; }
+    h3 { font-weight: 700; }
+    .section-note { font-size: 0.9rem; color: var(--text-muted); }
+    .net-bar-track { background: var(--border-soft); border-radius: 6px; height: 8px; overflow: hidden; }
+    .net-bar-fill { height: 100%; border-radius: 6px; transition: width 0.4s ease; }
+    .net-bar-fill.down { background: #5b6ee1; }
+    .net-bar-fill.up { background: #2ecc71; }
+    .audit-item { font-size: 0.85rem; padding: 6px 0; border-bottom: 1px solid var(--border-soft); }
+    .audit-item:last-child { border-bottom: none; }
+    /* Подсветка строки пользователя при наведении/выгрузке .ovpn */
+    #usersTable tbody tr { transition: background 0.15s ease, box-shadow 0.2s ease; }
+    #usersTable tbody tr:hover td { background: var(--accent-soft); }
+    #usersTable tbody tr.row-download-active td {
+      background: var(--accent-soft);
+      box-shadow: inset 3px 0 0 0 var(--accent);
+    }
+    /* Сырой лог сервера — моноширинный, со скроллом, тёмный/светлый вариант */
+    .log-box {
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      max-height: 480px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+<script>
+  // применяем сохранённую тему сразу, до отрисовки, чтобы не было "мигания"
+  (function() {
+    var saved = localStorage.getItem('ovpn_panel_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
+{% if session.get('admin') %}
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('dashboard') }}">OpenVPN Panel</a>
+    <div class="navbar-nav ms-auto flex-row gap-1 align-items-center">
+      <a class="nav-link" href="{{ url_for('dashboard') }}">Дашборд</a>
+      <a class="nav-link" href="{{ url_for('users') }}">Пользователи</a>
+      <a class="nav-link" href="{{ url_for('logs') }}">Логирование</a>
+      <a class="nav-link" href="{{ url_for('admins') }}">Админы</a>
+      <a class="nav-link" href="{{ url_for('settings') }}">Настройки</a>
+      <a class="nav-link" href="{{ url_for('logout') }}">Выход ({{ session['admin'] }})</a>
+      <button class="theme-toggle ms-2" onclick="toggleTheme()" id="themeToggleBtn" title="Переключить тему">🌓</button>
+    </div>
+  </div>
+</nav>
+{% endif %}
+<div class="container pb-5">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+<script>
+  function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('ovpn_panel_theme', next);
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
