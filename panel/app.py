@@ -201,7 +201,12 @@ def _parse_status_v2(raw):
             real_addr_full = row.get("Real Address", "")
             real_addr = real_addr_full.rsplit(":", 1)[0] if ":" in real_addr_full else real_addr_full
             vpn_addr = row.get("Virtual Address", "")
-            connected[cn] = {"real_addr": real_addr, "vpn_addr": vpn_addr}
+            connected[cn] = {
+                "real_addr": real_addr,
+                "vpn_addr": vpn_addr,
+                "bytes_received": row.get("Bytes Received", ""),
+                "bytes_sent": row.get("Bytes Sent", ""),
+            }
     return connected
 
 
@@ -252,6 +257,41 @@ def mgmt_kill(cn):
             s.sendall(b"quit\n")
     except OSError:
         pass
+
+
+def mgmt_status_v2(timeout=3):
+    """Запрашивает живой статус через management-интерфейс (команда
+    'status 2') — тот же формат, что и файл status-log version 2, но без
+    зависимости от периодичности его записи на диск: данные актуальны на
+    момент запроса. Возвращает сырой текст ответа, либо None при ошибке
+    соединения (например, OpenVPN сейчас не поднят)."""
+    try:
+        with socket.create_connection((MGMT_HOST, MGMT_PORT), timeout=timeout) as s:
+            s.settimeout(timeout)
+            buf = b""
+            try:
+                buf += s.recv(4096)  # приветствие, можно игнорировать
+            except socket.timeout:
+                pass
+            s.sendall(b"status 2\n")
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    chunk = s.recv(4096)
+                except socket.timeout:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                if b"\nEND" in buf:
+                    break
+            try:
+                s.sendall(b"quit\n")
+            except OSError:
+                pass
+            return buf.decode("utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -477,6 +517,59 @@ def api_net_stats():
         tx_bps = max(0.0, (tx - prev["tx"]) / dt)
 
     return jsonify({"iface": iface, "rx_bps": rx_bps, "tx_bps": tx_bps})
+
+
+# --------------------------------------------------------------------------
+# Трафик по пользователям в реальном времени
+# --------------------------------------------------------------------------
+_user_traffic_lock = threading.Lock()
+_user_traffic_state = {}  # cn -> {"ts": float, "rx": int, "tx": int}
+
+
+@app.route("/api/user-traffic")
+@login_required
+def api_user_traffic():
+    raw = mgmt_status_v2()
+    if raw is None:
+        return jsonify({"error": "management-интерфейс OpenVPN недоступен"}), 503
+
+    connected = _parse_status_v2(raw)
+    now = time.time()
+    result = {}
+
+    with _user_traffic_lock:
+        for cn, info in connected.items():
+            try:
+                rx = int(info.get("bytes_received") or 0)
+            except (TypeError, ValueError):
+                rx = 0
+            try:
+                tx = int(info.get("bytes_sent") or 0)
+            except (TypeError, ValueError):
+                tx = 0
+
+            prev = _user_traffic_state.get(cn)
+            _user_traffic_state[cn] = {"ts": now, "rx": rx, "tx": tx}
+
+            # Счётчики сбрасываются в 0 при каждом новом подключении (это не
+            # общий трафик за всё время, а трафик текущей сессии) — если
+            # видим "откат назад", значит это новая сессия под тем же CN,
+            # а не отрицательная скорость.
+            if prev is None or now <= prev["ts"] or rx < prev["rx"] or tx < prev["tx"]:
+                rx_bps = tx_bps = 0.0
+            else:
+                dt = now - prev["ts"]
+                rx_bps = max(0.0, (rx - prev["rx"]) / dt)
+                tx_bps = max(0.0, (tx - prev["tx"]) / dt)
+
+            result[cn] = {"rx_bps": rx_bps, "tx_bps": tx_bps, "rx_total": rx, "tx_total": tx}
+
+        # чистим состояние для тех, кто уже отключился — не течём памятью
+        # на сервере с большой текучкой подключений
+        for stale_cn in set(_user_traffic_state.keys()) - set(connected.keys()):
+            del _user_traffic_state[stale_cn]
+
+    return jsonify(result)
 
 
 # --------------------------------------------------------------------------

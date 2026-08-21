@@ -40,6 +40,7 @@
       <th>CN</th>
       <th>Сертификат</th>
       <th>Подключение</th>
+      <th>Трафик сейчас</th>
       <th>Публичный адрес</th>
       <th>Серый (VPN) адрес</th>
       <th>Закреплённый IP</th>
@@ -65,10 +66,13 @@
           <span class="badge badge-offline">offline</span>
         {% endif %}
       </td>
+      <td class="traffic-cell" data-traffic-for="{{ c.cn }}">
+        {% if c.online %}<span class="text-muted">—</span>{% else %}—{% endif %}
+      </td>
       <td>{{ c.public_ip if c.public_ip else '—' }}</td>
       <td>{{ c.vpn_ip_now if c.vpn_ip_now else '—' }}</td>
       <td>
-        {% if static_ip %}
+        {% if c.static_ip %}
           <span class="badge badge-static">{{ c.static_ip }}</span>
           {% if c.status == 'valid' %}
           <form method="post" action="{{ url_for('users_remove_static', cn=c.cn) }}" class="d-inline"
@@ -97,7 +101,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="8" class="text-muted">Пользователей пока нет</td></tr>
+    <tr><td colspan="9" class="text-muted">Пользователей пока нет</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -128,5 +132,41 @@
       setTimeout(function() { row.classList.remove('row-download-active'); }, 2500);
     });
   });
+
+  // Живой трафик по каждому подключённому пользователю — опрос раз в 3 сек
+  // через management-интерфейс OpenVPN (не зависит от периодичности записи
+  // status-файла на диск).
+  function formatBps(bytesPerSec) {
+    var bits = bytesPerSec * 8;
+    if (bits < 1000) return bits.toFixed(0) + ' bit/s';
+    if (bits < 1000 * 1000) return (bits / 1000).toFixed(1) + ' Kbit/s';
+    if (bits < 1000 * 1000 * 1000) return (bits / 1000 / 1000).toFixed(1) + ' Mbit/s';
+    return (bits / 1000 / 1000 / 1000).toFixed(2) + ' Gbit/s';
+  }
+
+  function pollUserTraffic() {
+    var cells = document.querySelectorAll('.traffic-cell[data-traffic-for]');
+    if (cells.length === 0) return;
+    fetch("{{ url_for('api_user_traffic') }}")
+      .then(function(r) { return r.ok ? r.json() : {}; })
+      .then(function(data) {
+        if (data.error) return;
+        cells.forEach(function(cell) {
+          var cn = cell.getAttribute('data-traffic-for');
+          var entry = data[cn];
+          if (entry) {
+            cell.innerHTML = '<span title="скачано за сессию: ' +
+              (entry.rx_total / 1048576).toFixed(1) + ' МБ, отправлено: ' +
+              (entry.tx_total / 1048576).toFixed(1) + ' МБ">↓' +
+              formatBps(entry.rx_bps) + ' / ↑' + formatBps(entry.tx_bps) + '</span>';
+          } else {
+            cell.innerHTML = '<span class="text-muted">—</span>';
+          }
+        });
+      })
+      .catch(function() {});
+  }
+  pollUserTraffic();
+  setInterval(pollUserTraffic, 3000);
 </script>
 {% endblock %}
